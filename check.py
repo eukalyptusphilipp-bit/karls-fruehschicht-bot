@@ -8,7 +8,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# --- Zugangsdaten aus GitHub Secrets ---
 USERNAME = os.environ["KARLS_USERNAME"]
 PASSWORD = os.environ["KARLS_PASSWORD"]
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -36,56 +35,84 @@ def schichten_abrufen():
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
 
     driver = webdriver.Chrome(options=options)
-    wait = WebDriverWait(driver, 15)
+    wait = WebDriverWait(driver, 20)
     frueh_schichten = set()
 
     try:
-        # Einloggen
-        driver.get("https://pep.karls.de/")
-        wait.until(EC.presence_of_element_located((By.NAME, "username"))).send_keys(USERNAME)
-        driver.find_element(By.NAME, "password").send_keys(PASSWORD)
-        driver.find_element(By.XPATH, "//button[@type='submit']").click()
+        driver.get("https://pep.karls.de/login")
+        time.sleep(5)
+
+        # Karlsianer-ID eingeben
+        id_feld = wait.until(EC.presence_of_element_located(
+            (By.CSS_SELECTOR, "[formcontrolname='employeeId'] input, input[formcontrolname='employeeId']")
+        ))
+        id_feld.send_keys(USERNAME)
+        print("Karlsianer-ID eingegeben")
+
+        # Passwort eingeben
+        pw_feld = driver.find_element(
+            By.CSS_SELECTOR, "[formcontrolname='password'] input, input[formcontrolname='password']"
+        )
+        pw_feld.send_keys(PASSWORD)
+        print("Passwort eingegeben")
+
+        # Login Button klicken
+        for selector in [
+            "//button[@type='submit']",
+            "//button[contains(text(),'Login')]",
+            "//button[contains(text(),'Anmelden')]",
+            "//button[contains(text(),'Einloggen')]"
+        ]:
+            buttons = driver.find_elements(By.XPATH, selector)
+            if buttons:
+                buttons[0].click()
+                print(f"Login Button geklickt")
+                break
+
+        time.sleep(5)
+        print("Nach Login URL:", driver.current_url)
 
         # Kalender laden
-        wait.until(EC.url_contains("dashboard"))
         driver.get("https://pep.karls.de/dashboard/personal")
-        time.sleep(3)
+        time.sleep(5)
 
-        # Alle Tage im Kalender finden und anklicken
-        tage = driver.find_elements(By.CSS_SELECTOR, ".calendar-day, [class*='day']")
+        # Alle klickbaren Tage finden
+        tage = driver.find_elements(By.CSS_SELECTOR, "[class*='day'], [class*='cell'], td")
+        print(f"Gefundene Tage: {len(tage)}")
 
-        for tag in tage:
+        for tag in tage[:60]:
             try:
                 tag.click()
-                time.sleep(1.5)
+                time.sleep(2)
 
-                # Schichten im Popup lesen
                 eintraege = driver.find_elements(By.XPATH, "//*[contains(text(), 'FRÜH')]")
                 for e in eintraege:
                     text = e.text.strip()
-                    if "FRÜH" in text and text:
+                    if "FRÜH" in text and len(text) > 3:
                         frueh_schichten.add(text)
+                        print(f"Gefunden: {text}")
 
-                # Popup schließen
-                close = driver.find_elements(By.XPATH, "//button[contains(text(), 'SCHLIESSEN')]")
+                close = driver.find_elements(By.XPATH, "//button[contains(text(), 'SCHLIESSEN')] | //button[contains(text(), 'Schließen')]")
                 if close:
                     close[0].click()
                     time.sleep(0.5)
             except:
                 continue
 
+    except Exception as e:
+        print(f"Fehler: {e}")
+        telegram_senden(f"⚠️ Bot Fehler: {e}")
     finally:
         driver.quit()
 
     return frueh_schichten
 
-# --- Hauptlogik ---
 print("Prüfe auf neue Frühschichten...")
 aktuell = schichten_abrufen()
 bekannt = laden()
-
 neu = aktuell - bekannt
 
 if neu:
@@ -93,8 +120,8 @@ if neu:
     for s in neu:
         nachricht += f"• {s}\n"
     telegram_senden(nachricht)
-    print(f"✅ {len(neu)} neue Schicht(en) gefunden – Telegram gesendet!")
-    speichern(aktuell)
+    print(f"✅ {len(neu)} neue Schicht(en) – Telegram gesendet!")
 else:
     print("Keine neuen Frühschichten.")
-    speichern(aktuell)
+
+speichern(aktuell)
