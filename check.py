@@ -60,6 +60,7 @@ def schichten_abrufen():
         print("Passwort eingegeben")
 
         # Login Button klicken
+        time.sleep(2)
         for selector in [
             "//button[@type='submit']",
             "//button[contains(text(),'Login')]",
@@ -68,7 +69,7 @@ def schichten_abrufen():
         ]:
             buttons = driver.find_elements(By.XPATH, selector)
             if buttons:
-                buttons[0].click()
+                driver.execute_script("arguments[0].click();", buttons[0])
                 print(f"Login Button geklickt")
                 break
 
