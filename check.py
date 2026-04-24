@@ -8,6 +8,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+telegram_senden("✅ Bot läuft!")
+
 USERNAME = os.environ["KARLS_USERNAME"]
 PASSWORD = os.environ["KARLS_PASSWORD"]
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
