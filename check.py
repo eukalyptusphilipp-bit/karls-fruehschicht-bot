@@ -124,5 +124,5 @@ if neu:
     print(f"✅ {len(neu)} neue Schicht(en) – Telegram gesendet!")
 else:
     print("Keine neuen Frühschichten.")
-telegram_senden("✅ Bot läuft!")
+    
 speichern(aktuell)
