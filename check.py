@@ -1,4 +1,3 @@
-telegram_senden("✅ Bot läuft!")
 import os
 import json
 import time
