@@ -64,24 +64,43 @@ def schichten_abrufen():
         driver.get("https://pep.karls.de/dashboard/personal")
         time.sleep(5)
 
-        # Ganzen Seitentext auslesen
-        seite = driver.find_element(By.TAG_NAME, "body").text
-        
-        # Zeilen durchgehen und FRÜH Schichten finden
-        zeilen = seite.split("\n")
-        for i, zeile in enumerate(zeilen):
-            if "FRÜH" in zeile:
-                # Datum ist meist 1-2 Zeilen vorher
+        # Alle "X freie Schichten" Buttons finden und anklicken
+        freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht')]")
+        print(f"Gefundene Tage mit freien Schichten: {len(freie_buttons)}")
+
+        for btn in freie_buttons:
+            try:
+                # Datum des Tages finden
                 datum = ""
-                for j in range(max(0, i-3), i):
-                    if any(tag in zeilen[j] for tag in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]):
-                        datum = zeilen[j]
+                parent = btn.find_element(By.XPATH, "./ancestor::*[3]")
+                parent_text = parent.text
+                for zeile in parent_text.split("\n"):
+                    if any(tag in zeile for tag in ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]):
+                        datum = zeile.strip()
                         break
-                
-                schicht = zeile.strip()
-                eintrag = f"{datum} – {schicht}" if datum else schicht
-                frueh_schichten.add(eintrag)
-                print(f"Gefunden: {eintrag}")
+
+                # Button klicken
+                driver.execute_script("arguments[0].click();", btn)
+                time.sleep(3)
+
+                # FRÜH Schichten im Popup finden
+                eintraege = driver.find_elements(By.XPATH, "//*[contains(text(), 'FRÜH')]")
+                for e in eintraege:
+                    text = e.text.strip()
+                    if "FRÜH" in text and len(text) > 3:
+                        eintrag = f"{datum} – {text}"
+                        frueh_schichten.add(eintrag)
+                        print(f"Gefunden: {eintrag}")
+
+                # Popup schließen
+                close = driver.find_elements(By.XPATH, "//button[contains(text(), 'SCHLIESSEN') or contains(text(), 'Schließen')]")
+                if close:
+                    driver.execute_script("arguments[0].click();", close[0])
+                    time.sleep(1)
+
+            except Exception as e:
+                print(f"Fehler bei Tag: {e}")
+                continue
 
     except Exception as e:
         print(f"Fehler: {e}")
