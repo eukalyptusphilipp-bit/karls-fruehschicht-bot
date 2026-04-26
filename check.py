@@ -104,13 +104,15 @@ aktuell = schichten_abrufen()
 bekannt = laden()
 neu = aktuell - bekannt
 
-if neu:
-    nachricht = "🍓 NEUE FRÜHSCHICHT bei Karls!\n\n"
-    for s in neu:
+if aktuell:
+    nachricht = "📋 Gefundene FRÜH-Schichten:\n\n"
+    for s in aktuell:
         nachricht += f"• {s}\n"
     telegram_senden(nachricht)
-    print(f"✅ {len(neu)} neue Schicht(en) – Telegram gesendet!")
 else:
-    print("Keine neuen Frühschichten.")
+    telegram_senden("❌ Keine FRÜH-Schichten gefunden oder Login fehlgeschlagen!")
 
 speichern(aktuell)
+
+
+
