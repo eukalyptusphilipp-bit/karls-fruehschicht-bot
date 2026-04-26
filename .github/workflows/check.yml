@@ -21,6 +21,12 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Cache laden
+        uses: actions/cache@v4
+        with:
+          path: bekannte_schichten.json
+          key: schichten-cache
+
       - name: Chrome installieren
         uses: browser-actions/setup-chrome@v1
 
@@ -34,3 +40,9 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python check.py
+
+      - name: Cache speichern
+        uses: actions/cache@v4
+        with:
+          path: bekannte_schichten.json
+          key: schichten-cache
