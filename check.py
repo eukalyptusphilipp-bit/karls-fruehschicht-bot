@@ -33,28 +33,26 @@ def speichern(schichten):
 
 def monat_scannen(driver, frueh_schichten, monat_name):
     time.sleep(3)
-    
-    # Alle "freie Schichten" Texte finden
-    freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht') or contains(text(), 'free shifts') or contains(text(), 'free shift')]")
+
+    freie_buttons = driver.find_elements(By.CSS_SELECTOR, "div.col.text-center")
+    freie_buttons = [b for b in freie_buttons if "freie Schicht" in b.text or "free shift" in b.text]
     print(f"{monat_name}: {len(freie_buttons)} Tage mit freien Schichten")
 
     for i in range(len(freie_buttons)):
         try:
-            # Buttons neu laden nach jedem Popup
-            freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht') or contains(text(), 'free shifts') or contains(text(), 'free shift')]")
+            freie_buttons = driver.find_elements(By.CSS_SELECTOR, "div.col.text-center")
+            freie_buttons = [b for b in freie_buttons if "freie Schicht" in b.text or "free shift" in b.text]
             if i >= len(freie_buttons):
                 break
-                
+
             btn = freie_buttons[i]
-            
-            # Datum aus der Kalenderzelle holen
+
+            # Datum aus Kalenderzelle
             datum = ""
             try:
                 zelle = btn.find_element(By.XPATH, "./ancestor::td")
                 zellen_text = zelle.text.strip().split("\n")
-                # Erste Zeile ist meist die Zahl (z.B. "30.")
-                datum = zellen_text[0].strip()
-                datum = f"{datum} {monat_name}"
+                datum = f"{zellen_text[0].strip()} {monat_name}"
             except:
                 datum = monat_name
 
@@ -71,13 +69,12 @@ def monat_scannen(driver, frueh_schichten, monat_name):
             except:
                 pass
 
-            # Nur FRÜH Schichten im Popup – ohne "Vorläufige Planung"
+            # FRÜH Schichten im Popup – Vorläufige Planung überspringen
             alle_elemente = driver.find_elements(By.XPATH, "//*[contains(text(), 'FRÜH')]")
             for e in alle_elemente:
                 try:
                     zeile = e.text.strip()
                     eltern = e.find_element(By.XPATH, "..").text
-                    # Vorläufige Planung überspringen
                     if "Vorläufige" in eltern or "Preliminary" in eltern:
                         continue
                     if "FRÜH" in zeile and len(zeile) > 5:
@@ -128,9 +125,11 @@ def schichten_abrufen():
             (By.CSS_SELECTOR, "[formcontrolname='employeeId'] input, input[formcontrolname='employeeId']")
         ))
         id_feld.send_keys(USERNAME)
+
         pw_feld = driver.find_element(By.CSS_SELECTOR, "[formcontrolname='password'] input, input[formcontrolname='password']")
         pw_feld.send_keys(PASSWORD)
         time.sleep(2)
+
         buttons = driver.find_elements(By.XPATH, "//button[@type='submit']")
         if buttons:
             driver.execute_script("arguments[0].click();", buttons[0])
@@ -140,8 +139,7 @@ def schichten_abrufen():
         driver.get("https://pep.karls.de/profile/116359/kalender")
         time.sleep(5)
 
-        # Aktuellen Monat auslesen
-        monat_elem = driver.find_elements(By.XPATH, "//*[contains(@class,'month') or contains(@class,'titel') or //input[@type='text']]")
+        # Monatsnamen auslesen
         aktueller_monat = "Aktueller Monat"
         try:
             monat_input = driver.find_element(By.XPATH, "//input[@type='text']")
@@ -152,26 +150,22 @@ def schichten_abrufen():
         # Aktuellen Monat scannen
         monat_scannen(driver, frueh_schichten, aktueller_monat)
 
-        # Nächsten Monat
-        next_btn = driver.find_elements(By.XPATH, "//button[contains(@class,'next') or contains(@class,'arrow-right') or contains(@class,'forward')]")
-        if not next_btn:
-            # Gelber Pfeil Button
-            next_btn = driver.find_elements(By.CSS_SELECTOR, "button.btn-warning, button[class*='next'], button[class*='forward']")
-        
-        if next_btn:
-            driver.execute_script("arguments[0].click();", next_btn[-1])
+        # Nächsten Monat – gelber Pfeil Button
+        next_btn = driver.find_elements(By.CSS_SELECTOR, "button.btn-warning")
+        if len(next_btn) >= 2:
+            driver.execute_script("arguments[0].click();", next_btn[1])
             time.sleep(3)
-            
+
             naechster_monat = "Nächster Monat"
             try:
                 monat_input = driver.find_element(By.XPATH, "//input[@type='text']")
                 naechster_monat = monat_input.get_attribute("value") or "Nächster Monat"
             except:
                 pass
-            
+
             monat_scannen(driver, frueh_schichten, naechster_monat)
         else:
-            print("Kein Weiter-Button gefunden")
+            print(f"Weiter-Button nicht gefunden, gefunden: {len(next_btn)}")
 
     except Exception as e:
         print(f"Hauptfehler: {e}")
