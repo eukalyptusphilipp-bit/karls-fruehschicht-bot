@@ -65,7 +65,11 @@ def schichten_abrufen():
         # Direkt zum Kalender
         driver.get("https://pep.karls.de/profile/116359/kalender")
         time.sleep(5)
-
+        
+# Debug: Seitentext schicken
+        seite = driver.find_element(By.TAG_NAME, "body").text
+        telegram_senden(f"📄 Kalender:\n{seite[:3000]}")
+        
         # Alle "freie Schichten" Buttons finden
         freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht')]")
         print(f"Gefundene Tage mit freien Schichten: {len(freie_buttons)}")
