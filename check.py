@@ -31,67 +31,81 @@ def speichern(schichten):
     with open(BEKANNTE_FILE, "w") as f:
         json.dump(list(schichten), f)
 
-def popup_schliessen(driver):
-    close = driver.find_elements(By.XPATH, "//button[contains(text(), 'SCHLIESSEN') or contains(text(), 'Schließen') or contains(text(), 'CLOSE') or contains(text(), 'Close')]")
-    if close:
-        driver.execute_script("arguments[0].click();", close[0])
-    else:
-        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
-    time.sleep(1)
+def monat_scannen(driver, frueh_schichten, monat_name):
+    time.sleep(3)
+    
+    # Alle "freie Schichten" Texte finden
+    freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht') or contains(text(), 'free shifts') or contains(text(), 'free shift')]")
+    print(f"{monat_name}: {len(freie_buttons)} Tage mit freien Schichten")
 
-def monat_scannen(driver, frueh_schichten):
-    freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'free shifts') or contains(text(), 'free shift') or contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht')]")
-    print(f"Tage mit freien Schichten: {len(freie_buttons)}")
-
-    for i, btn in enumerate(freie_buttons):
+    for i in range(len(freie_buttons)):
         try:
-            # Datum aus der Zelle holen
+            # Buttons neu laden nach jedem Popup
+            freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht') or contains(text(), 'free shifts') or contains(text(), 'free shift')]")
+            if i >= len(freie_buttons):
+                break
+                
+            btn = freie_buttons[i]
+            
+            # Datum aus der Kalenderzelle holen
             datum = ""
             try:
                 zelle = btn.find_element(By.XPATH, "./ancestor::td")
-                # Zahl im Tag (z.B. "30.")
-                datum_elem = zelle.find_elements(By.XPATH, ".//*[contains(@class,'day-number') or contains(@class,'date') or contains(@class,'day')]")
-                if datum_elem:
-                    datum = datum_elem[0].text.strip()
-                else:
-                    datum = zelle.text.split("\n")[0].strip()
+                zellen_text = zelle.text.strip().split("\n")
+                # Erste Zeile ist meist die Zahl (z.B. "30.")
+                datum = zellen_text[0].strip()
+                datum = f"{datum} {monat_name}"
             except:
-                pass
+                datum = monat_name
 
-            print(f"Klicke Tag {i+1}, Datum: {datum}")
+            driver.execute_script("arguments[0].scrollIntoView();", btn)
+            time.sleep(0.5)
             driver.execute_script("arguments[0].click();", btn)
             time.sleep(3)
 
-            # Nur Schichten im Popup lesen – nicht "Preliminary planning"
-            popup = driver.find_elements(By.XPATH, "//*[contains(@class,'modal') or contains(@class,'popup') or contains(@class,'dialog') or contains(@class,'overlay')]")
-            
-            if popup:
-                popup_text = popup[0].find_elements(By.XPATH, ".//*[contains(text(), 'FRÜH')]")
-                for e in popup_text:
-                    zeile = e.text.strip()
-                    if "FRÜH" in zeile and "Preliminary" not in zeile and len(zeile) > 3:
-                        eintrag = f"{datum} – {zeile}"
-                        frueh_schichten.add(eintrag)
-                        print(f"✅ Gefunden: {eintrag}")
-            else:
-                # Fallback: alle FRÜH ohne Preliminary
-                eintraege = driver.find_elements(By.XPATH, "//*[contains(text(), 'FRÜH')]")
-                for e in eintraege:
-                    zeile = e.text.strip()
-                    eltern_text = e.find_element(By.XPATH, "..").text
-                    if "FRÜH" in zeile and "Preliminary" not in eltern_text and len(zeile) > 3:
-                        eintrag = f"{datum} – {zeile}"
-                        frueh_schichten.add(eintrag)
-                        print(f"✅ Gefunden: {eintrag}")
-
-            popup_schliessen(driver)
-
-        except Exception as e:
-            print(f"Fehler bei Tag {i+1}: {e}")
+            # Warten bis Popup offen
             try:
-                popup_schliessen(driver)
+                WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Schicht direkt besetzen')]"))
+                )
             except:
                 pass
+
+            # Nur FRÜH Schichten im Popup – ohne "Vorläufige Planung"
+            alle_elemente = driver.find_elements(By.XPATH, "//*[contains(text(), 'FRÜH')]")
+            for e in alle_elemente:
+                try:
+                    zeile = e.text.strip()
+                    eltern = e.find_element(By.XPATH, "..").text
+                    # Vorläufige Planung überspringen
+                    if "Vorläufige" in eltern or "Preliminary" in eltern:
+                        continue
+                    if "FRÜH" in zeile and len(zeile) > 5:
+                        eintrag = f"{datum} – {zeile}"
+                        frueh_schichten.add(eintrag)
+                        print(f"✅ {eintrag}")
+                except:
+                    continue
+
+            # Popup schließen
+            close = driver.find_elements(By.XPATH, "//button[contains(text(), 'SCHLIESSEN')]")
+            if close:
+                driver.execute_script("arguments[0].click();", close[0])
+            else:
+                driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+            time.sleep(2)
+
+        except Exception as e:
+            print(f"Fehler Tag {i+1}: {e}")
+            try:
+                close = driver.find_elements(By.XPATH, "//button[contains(text(), 'SCHLIESSEN')]")
+                if close:
+                    driver.execute_script("arguments[0].click();", close[0])
+                else:
+                    driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+            except:
+                pass
+            time.sleep(2)
             continue
 
 def schichten_abrufen():
@@ -102,43 +116,62 @@ def schichten_abrufen():
     options.add_argument("--window-size=1920,1080")
 
     driver = webdriver.Chrome(options=options)
-    wait = WebDriverWait(driver, 20)
     frueh_schichten = set()
 
     try:
+        # Login
         driver.get("https://pep.karls.de/login")
         time.sleep(5)
 
+        wait = WebDriverWait(driver, 20)
         id_feld = wait.until(EC.presence_of_element_located(
             (By.CSS_SELECTOR, "[formcontrolname='employeeId'] input, input[formcontrolname='employeeId']")
         ))
         id_feld.send_keys(USERNAME)
-
-        pw_feld = driver.find_element(
-            By.CSS_SELECTOR, "[formcontrolname='password'] input, input[formcontrolname='password']"
-        )
+        pw_feld = driver.find_element(By.CSS_SELECTOR, "[formcontrolname='password'] input, input[formcontrolname='password']")
         pw_feld.send_keys(PASSWORD)
-
         time.sleep(2)
         buttons = driver.find_elements(By.XPATH, "//button[@type='submit']")
         if buttons:
             driver.execute_script("arguments[0].click();", buttons[0])
         time.sleep(5)
 
+        # Kalender laden
         driver.get("https://pep.karls.de/profile/116359/kalender")
         time.sleep(5)
 
+        # Aktuellen Monat auslesen
+        monat_elem = driver.find_elements(By.XPATH, "//*[contains(@class,'month') or contains(@class,'titel') or //input[@type='text']]")
+        aktueller_monat = "Aktueller Monat"
+        try:
+            monat_input = driver.find_element(By.XPATH, "//input[@type='text']")
+            aktueller_monat = monat_input.get_attribute("value") or "Aktueller Monat"
+        except:
+            pass
+
         # Aktuellen Monat scannen
-        print("=== Aktueller Monat ===")
-        monat_scannen(driver, frueh_schichten)
+        monat_scannen(driver, frueh_schichten, aktueller_monat)
 
         # Nächsten Monat
-        next_buttons = driver.find_elements(By.XPATH, "//button[contains(@class,'next') or contains(@aria-label,'next') or contains(@aria-label,'vor') or contains(text(),'→') or contains(text(),'>')]")
-        if next_buttons:
-            driver.execute_script("arguments[0].click();", next_buttons[0])
+        next_btn = driver.find_elements(By.XPATH, "//button[contains(@class,'next') or contains(@class,'arrow-right') or contains(@class,'forward')]")
+        if not next_btn:
+            # Gelber Pfeil Button
+            next_btn = driver.find_elements(By.CSS_SELECTOR, "button.btn-warning, button[class*='next'], button[class*='forward']")
+        
+        if next_btn:
+            driver.execute_script("arguments[0].click();", next_btn[-1])
             time.sleep(3)
-            print("=== Nächster Monat ===")
-            monat_scannen(driver, frueh_schichten)
+            
+            naechster_monat = "Nächster Monat"
+            try:
+                monat_input = driver.find_element(By.XPATH, "//input[@type='text']")
+                naechster_monat = monat_input.get_attribute("value") or "Nächster Monat"
+            except:
+                pass
+            
+            monat_scannen(driver, frueh_schichten, naechster_monat)
+        else:
+            print("Kein Weiter-Button gefunden")
 
     except Exception as e:
         print(f"Hauptfehler: {e}")
@@ -155,7 +188,7 @@ neu = aktuell - bekannt
 
 if neu:
     nachricht = "🍓 NEUE FRÜHSCHICHT bei Karls!\n\n"
-    for s in neu:
+    for s in sorted(neu):
         nachricht += f"• {s}\n"
     telegram_senden(nachricht)
     print(f"✅ {len(neu)} neue Schicht(en) – Telegram gesendet!")
