@@ -7,6 +7,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
 
 USERNAME = os.environ["KARLS_USERNAME"]
 PASSWORD = os.environ["KARLS_PASSWORD"]
@@ -42,7 +43,6 @@ def schichten_abrufen():
     frueh_schichten = set()
 
     try:
-        # Login
         driver.get("https://pep.karls.de/login")
         time.sleep(5)
 
@@ -62,21 +62,15 @@ def schichten_abrufen():
             driver.execute_script("arguments[0].click();", buttons[0])
         time.sleep(5)
 
-        # Direkt zum Kalender
         driver.get("https://pep.karls.de/profile/116359/kalender")
         time.sleep(5)
-        
-# Debug: Seitentext schicken
-        seite = driver.find_element(By.TAG_NAME, "body").text
-        telegram_senden(f"📄 Kalender:\n{seite[:3000]}")
-        
-        # Alle "freie Schichten" Buttons finden
-       freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'free shifts') or contains(text(), 'free shift') or contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht')]")
+
+        # Alle "free shifts" Buttons finden
+        freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'free shifts') or contains(text(), 'free shift') or contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht')]")
         print(f"Gefundene Tage mit freien Schichten: {len(freie_buttons)}")
 
         for i, btn in enumerate(freie_buttons):
             try:
-                # Datum finden
                 datum = ""
                 try:
                     zelle = btn.find_element(By.XPATH, "./ancestor::td")
@@ -90,7 +84,6 @@ def schichten_abrufen():
                 driver.execute_script("arguments[0].click();", btn)
                 time.sleep(3)
 
-                # FRÜH Schichten im Popup finden
                 eintraege = driver.find_elements(By.XPATH, "//*[contains(text(), 'FRÜH')]")
                 for e in eintraege:
                     text = e.text.strip()
@@ -99,14 +92,11 @@ def schichten_abrufen():
                         frueh_schichten.add(eintrag)
                         print(f"Gefunden: {eintrag}")
 
-                # Popup schließen
-                close = driver.find_elements(By.XPATH, "//button[contains(text(), 'SCHLIESSEN') or contains(text(), 'Schließen') or contains(text(), 'schließen')]")
+                close = driver.find_elements(By.XPATH, "//button[contains(text(), 'SCHLIESSEN') or contains(text(), 'Schließen') or contains(text(), 'schließen') or contains(text(), 'CLOSE') or contains(text(), 'Close')]")
                 if close:
                     driver.execute_script("arguments[0].click();", close[0])
                     time.sleep(1)
                 else:
-                    # ESC drücken falls kein Button
-                    from selenium.webdriver.common.keys import Keys
                     driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
                     time.sleep(1)
 
