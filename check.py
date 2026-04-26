@@ -45,47 +45,33 @@ def schichten_abrufen():
         driver.get("https://pep.karls.de/login")
         time.sleep(5)
 
-        # Karlsianer-ID eingeben
         id_feld = wait.until(EC.presence_of_element_located(
             (By.CSS_SELECTOR, "[formcontrolname='employeeId'] input, input[formcontrolname='employeeId']")
         ))
         id_feld.send_keys(USERNAME)
-        print("Karlsianer-ID eingegeben")
 
-        # Passwort eingeben
         pw_feld = driver.find_element(
             By.CSS_SELECTOR, "[formcontrolname='password'] input, input[formcontrolname='password']"
         )
         pw_feld.send_keys(PASSWORD)
-        print("Passwort eingegeben")
 
-        # Login Button klicken
         time.sleep(2)
-        for selector in [
-            "//button[@type='submit']",
-            "//button[contains(text(),'Login')]",
-            "//button[contains(text(),'Anmelden')]",
-            "//button[contains(text(),'Einloggen')]"
-        ]:
-            buttons = driver.find_elements(By.XPATH, selector)
-            if buttons:
-                driver.execute_script("arguments[0].click();", buttons[0])
-                print(f"Login Button geklickt")
-                break
+        buttons = driver.find_elements(By.XPATH, "//button[@type='submit']")
+        if buttons:
+            driver.execute_script("arguments[0].click();", buttons[0])
 
         time.sleep(5)
-        print("Nach Login URL:", driver.current_url)
-
-        # Kalender laden
         driver.get("https://pep.karls.de/dashboard/personal")
         time.sleep(5)
 
-        # Alle klickbaren Tage finden
+        # Alle Tage finden
         tage = driver.find_elements(By.CSS_SELECTOR, "[class*='day'], [class*='cell'], td")
-        print(f"Gefundene Tage: {len(tage)}")
 
         for tag in tage[:60]:
             try:
+                # Datum des Tages auslesen bevor klicken
+                datum = tag.text.strip()
+                
                 tag.click()
                 time.sleep(2)
 
@@ -93,8 +79,10 @@ def schichten_abrufen():
                 for e in eintraege:
                     text = e.text.strip()
                     if "FRÜH" in text and len(text) > 3:
-                        frueh_schichten.add(text)
-                        print(f"Gefunden: {text}")
+                        # Datum + Schicht kombinieren
+                        eintrag = f"{datum} | {text}" if datum else text
+                        frueh_schichten.add(eintrag)
+                        print(f"Gefunden: {eintrag}")
 
                 close = driver.find_elements(By.XPATH, "//button[contains(text(), 'SCHLIESSEN')] | //button[contains(text(), 'Schließen')]")
                 if close:
@@ -124,5 +112,5 @@ if neu:
     print(f"✅ {len(neu)} neue Schicht(en) – Telegram gesendet!")
 else:
     print("Keine neuen Frühschichten.")
-    
+
 speichern(aktuell)
