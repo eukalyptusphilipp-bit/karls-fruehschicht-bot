@@ -71,7 +71,7 @@ def schichten_abrufen():
         telegram_senden(f"📄 Kalender:\n{seite[:3000]}")
         
         # Alle "freie Schichten" Buttons finden
-        freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht')]")
+       freie_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'free shifts') or contains(text(), 'free shift') or contains(text(), 'freie Schichten') or contains(text(), 'freie Schicht')]")
         print(f"Gefundene Tage mit freien Schichten: {len(freie_buttons)}")
 
         for i, btn in enumerate(freie_buttons):
