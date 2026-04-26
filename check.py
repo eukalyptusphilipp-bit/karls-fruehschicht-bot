@@ -47,6 +47,16 @@ try:
 
     time.sleep(5)
     driver.get("https://pep.karls.de/dashboard/personal")
+time.sleep(3)
+# Zum Kalender navigieren
+kalender_links = driver.find_elements(By.XPATH, "//*[contains(text(), 'Kalender') or contains(text(), 'calendar') or contains(text(), 'My calendar')]")
+if kalender_links:
+    driver.execute_script("arguments[0].click();", kalender_links[0])
+    time.sleep(5)
+    
+seite = driver.find_element(By.TAG_NAME, "body").text
+telegram_senden(f"📄 Kalender:\n{seite[:3000]}")
+
     time.sleep(5)
 
     # Ganzen Seitentext schicken
