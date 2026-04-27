@@ -49,9 +49,4 @@ jobs:
           path: bekannte_schichten.json
           key: schichten-cache
 
-            - name: Screenshot hochladen
-  if: always()
-  uses: actions/upload-artifact@v4
-  with:
-    name: debug-screenshot
-    path: debug.png
+         
