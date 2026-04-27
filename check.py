@@ -37,7 +37,6 @@ def speichern(schichten):
 
 
 def banner_schliessen(driver):
-    """Schliesst das Bestaetigen-Banner falls vorhanden."""
     try:
         btn = driver.find_element(By.XPATH,
             "//button[contains(text(),'BESTÄTIGEN') or contains(text(),'CONFIRM') or contains(text(),'Bestätigen')]"
@@ -50,17 +49,33 @@ def banner_schliessen(driver):
         pass
 
 
+def get_dialog(driver):
+    """
+    Gibt den Dialog-Container zurueck – probiert mehrere Selektoren.
+    """
+    selektoren = [
+        "mat-dialog-container",
+        "ngb-modal-window",
+        ".modal-dialog",
+        ".modal-content",
+        "[role='dialog']",
+        "kendo-dialog",
+        ".k-dialog",
+        ".cdk-overlay-pane",
+    ]
+    for sel in selektoren:
+        elems = driver.find_elements(By.CSS_SELECTOR, sel)
+        for e in elems:
+            try:
+                if e.is_displayed() and e.text.strip():
+                    return e
+            except:
+                pass
+    return None
+
+
 def popup_ist_offen(driver):
-    try:
-        dialoge = driver.find_elements(By.CSS_SELECTOR, "mat-dialog-container")
-        if any(d.is_displayed() for d in dialoge):
-            return True
-        titel = driver.find_elements(By.XPATH,
-            "//*[contains(text(),'Schicht direkt besetzen') or contains(text(),'Assign shift')]"
-        )
-        return bool(titel)
-    except:
-        return False
+    return get_dialog(driver) is not None
 
 
 def popup_warten(driver, sekunden=10):
@@ -106,10 +121,6 @@ def popup_schliessen(driver):
 
 
 def angular_klick(driver, element):
-    """
-    Sendet ein echtes MouseEvent mit bubbles=true.
-    Das ist was Angular braucht – normales .click() reicht nicht.
-    """
     driver.execute_script("""
         var el = arguments[0];
         el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));
@@ -123,49 +134,28 @@ def klicke_element(driver, element):
     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
     time.sleep(1)
 
-    # Methode 1: Angular-nativer MouseEvent (bubbles: true)
     try:
         angular_klick(driver, element)
         time.sleep(3)
         if popup_ist_offen(driver):
-            print("    -> Klick via Angular MouseEvent")
             return True
     except Exception as e:
         print(f"    Angular-Klick Fehler: {e}")
 
-    # Methode 2: ActionChains
     try:
         actions = ActionChains(driver)
         actions.move_to_element(element).pause(0.3).click().perform()
         time.sleep(3)
         if popup_ist_offen(driver):
-            print("    -> Klick via ActionChains")
             return True
-    except Exception as e:
-        print(f"    ActionChains Fehler: {e}")
+    except:
+        pass
 
-    # Methode 3: Per Koordinaten klicken
-    try:
-        rect = driver.execute_script("""
-            var r = arguments[0].getBoundingClientRect();
-            return {x: r.left + r.width/2, y: r.top + r.height/2};
-        """, element)
-        actions = ActionChains(driver)
-        actions.move_by_offset(rect['x'], rect['y']).click().perform()
-        time.sleep(3)
-        if popup_ist_offen(driver):
-            print("    -> Klick via Koordinaten")
-            return True
-    except Exception as e:
-        print(f"    Koordinaten-Klick Fehler: {e}")
-
-    # Methode 4: Angular-Klick auf inneres div
     try:
         inner = element.find_element(By.CSS_SELECTOR, "div.col.text-center")
         angular_klick(driver, inner)
         time.sleep(3)
         if popup_ist_offen(driver):
-            print("    -> Klick via inner div Angular")
             return True
     except:
         pass
@@ -181,16 +171,6 @@ def monatsnamen_lesen(driver):
             return wert.strip()
     except:
         pass
-
-    for sel in ["kendo-datepicker input", ".k-datepicker input"]:
-        try:
-            elem = driver.find_element(By.CSS_SELECTOR, sel)
-            wert = elem.get_attribute("value") or elem.text
-            if wert and len(wert) > 2:
-                return wert.strip()
-        except:
-            pass
-
     try:
         elems = driver.find_elements(By.XPATH,
             "//*[contains(text(),'2025') or contains(text(),'2026') or contains(text(),'2027')]"
@@ -201,7 +181,6 @@ def monatsnamen_lesen(driver):
                 return t
     except:
         pass
-
     return "Unbekannter Monat"
 
 
@@ -262,13 +241,25 @@ def monat_scannen(driver, frueh_schichten, monat_name):
                 geoeffnet = popup_warten(driver, sekunden=5)
 
             if not geoeffnet:
-                print(f"    -> Kein Popup")
+                # Screenshot fuer Debugging
+                driver.save_screenshot(f"debug_kein_popup_{i}.png")
+                print(f"    -> Kein Popup – Screenshot gespeichert")
                 continue
 
-            dialog = driver.find_element(By.CSS_SELECTOR, "mat-dialog-container")
-            alle_zeilen = dialog.text.split("\n")
+            # Dialog finden
+            dialog = get_dialog(driver)
+            if not dialog:
+                print(f"    -> Dialog nicht gefunden")
+                popup_schliessen(driver)
+                continue
 
+            # DEBUG: zeige was im Dialog steht
+            dialog_text = dialog.text
+            print(f"    Dialog-Text (erste 200 Zeichen): {dialog_text[:200]}")
+
+            alle_zeilen = dialog_text.split("\n")
             frueh_gefunden = False
+
             for idx, zeile in enumerate(alle_zeilen):
                 zeile = zeile.strip()
                 if not zeile or "FRÜH" not in zeile.upper():
