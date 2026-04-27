@@ -42,15 +42,16 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python check.py
 
-        - name: Screenshot hochladen
-  if: always()
-  uses: actions/upload-artifact@v4
-  with:
-    name: debug-screenshot
-    path: debug.png
 
       - name: Cache speichern
         uses: actions/cache@v4
         with:
           path: bekannte_schichten.json
           key: schichten-cache
+
+            - name: Screenshot hochladen
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: debug-screenshot
+    path: debug.png
