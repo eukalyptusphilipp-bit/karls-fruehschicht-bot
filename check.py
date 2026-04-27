@@ -255,6 +255,8 @@ def monat_scannen(driver, frueh_schichten, monat_name):
 
         print(f"  {datum} ({tag.text.strip()[:30]}) ...")
 
+        driver.save_screenshot("debug.png")
+
         try:
             geoeffnet = klicke_element(driver, tag)
 
