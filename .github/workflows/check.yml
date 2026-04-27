@@ -34,12 +34,20 @@ jobs:
         run: pip install selenium requests
 
       - name: Skript ausführen
+   
         env:
           KARLS_USERNAME: ${{ secrets.KARLS_USERNAME }}
           KARLS_PASSWORD: ${{ secrets.KARLS_PASSWORD }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python check.py
+
+        - name: Screenshot hochladen
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: debug-screenshot
+    path: debug.png
 
       - name: Cache speichern
         uses: actions/cache@v4
