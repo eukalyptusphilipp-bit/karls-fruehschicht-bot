@@ -32,10 +32,27 @@ def speichern(daten):
 
 def monat_lesen(driver):
     try:
-        feld = driver.find_element(By.XPATH, "//input[@type='text']")
-        wert = feld.get_attribute("value")
+        # Kendo DatePicker - Wert aus Input holen
+        feld = driver.find_element(By.CSS_SELECTOR, "input.k-input-inner")
+        wert = feld.get_attribute("value") or feld.get_attribute("title")
         if wert and len(wert) > 2:
             return wert.strip()
+    except:
+        pass
+    try:
+        # Fallback: title-Attribut
+        feld = driver.find_element(By.CSS_SELECTOR, "kendo-datepicker input")
+        wert = feld.get_attribute("title")
+        if wert and len(wert) > 2:
+            return wert.strip()
+    except:
+        pass
+    try:
+        # Fallback: sichtbarer Text im DatePicker
+        picker = driver.find_element(By.CSS_SELECTOR, "kendo-datepicker")
+        wert = picker.text.strip()
+        if wert:
+            return wert
     except:
         pass
     return "Unbekannt"
