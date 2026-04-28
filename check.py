@@ -41,30 +41,30 @@ def monat_lesen(driver):
     return "Unbekannt"
 
 def freie_schichten_lesen(driver):
-    """Liest alle Tage mit freien Schichten und deren Anzahl."""
     ergebnis = {}
     
     tage = driver.find_elements(By.CSS_SELECTOR, "div.col.text-center")
     for tag in tage:
         text = tag.text.strip()
         if "freie Schicht" in text or "free shift" in text.lower():
+            print(f"DEBUG gefunden: '{text}'")  # <-- was steht da?
             try:
-                # Zahl aus Text holen (z.B. "20 freie Schichten" -> 20)
                 zahl = int(text.split()[0])
                 
-                # Datum aus Zelle holen
                 datum = "?"
                 try:
                     zelle = tag.find_element(By.XPATH, "./ancestor::td")
                     zeilen = zelle.text.strip().split("\n")
+                    print(f"DEBUG Zelle text: {zeilen}")  # <-- was ist in der Zelle?
                     tageszahl = zeilen[0].strip().replace(".", "")
                     if tageszahl.isdigit():
                         datum = tageszahl
-                except:
-                    pass
+                except Exception as e:
+                    print(f"DEBUG Datum-Fehler: {e}")
                 
                 ergebnis[datum] = zahl
-            except:
+            except Exception as e:
+                print(f"DEBUG Zahl-Fehler: {e}")
                 continue
     
     return ergebnis
