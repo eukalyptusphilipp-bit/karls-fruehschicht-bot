@@ -1,5 +1,4 @@
 name: Karls Frühschicht Checker
-
 on:
   schedule:
     - cron: '*/5 * * * *'
@@ -11,7 +10,6 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,7 +23,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: bekannte_schichten.json
-          key: schichten-cache
+          key: schichten-${{ github.run_id }}
+          restore-keys: |
+            schichten-
 
       - name: Chrome installieren
         uses: browser-actions/setup-chrome@v1
@@ -42,7 +42,7 @@ jobs:
         run: python check.py
 
       - name: Cache speichern
-        uses: actions/cache@v4
+        uses: actions/cache/save@v4
         with:
           path: bekannte_schichten.json
-          key: schichten-cache
+          key: schichten-${{ github.run_id }}
