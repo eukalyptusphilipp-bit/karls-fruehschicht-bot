@@ -7,6 +7,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 
 USERNAME = os.environ["KARLS_USERNAME"]
 PASSWORD = os.environ["KARLS_PASSWORD"]
@@ -24,14 +26,169 @@ def telegram_senden(text):
 def laden():
     try:
         with open(BEKANNTE_FILE) as f:
-            return json.load(f)
+            return set(json.load(f))
     except:
-        return {}
+        return set()
 
 
-def speichern(daten):
+def speichern(schichten):
     with open(BEKANNTE_FILE, "w") as f:
-        json.dump(daten, f)
+        json.dump(list(schichten), f)
+
+
+def banner_schliessen(driver):
+    try:
+        btn = driver.find_element(By.XPATH,
+            "//button[contains(text(),'BESTÄTIGEN') or contains(text(),'CONFIRM') or contains(text(),'Bestätigen')]"
+        )
+        if btn.is_displayed():
+            driver.execute_script("arguments[0].click();", btn)
+            print("  Banner geschlossen")
+            time.sleep(2)
+    except:
+        pass
+
+
+def popup_ist_offen(driver):
+    """Prueft ob irgendein Dialog/Popup sichtbar ist."""
+    for sel in [
+        "mat-dialog-container",
+        "[role='dialog']",
+        ".cdk-overlay-pane",
+        "ngb-modal-window",
+        ".modal-content",
+        "kendo-dialog",
+    ]:
+        try:
+            elems = driver.find_elements(By.CSS_SELECTOR, sel)
+            for e in elems:
+                if e.is_displayed() and e.text.strip():
+                    return True
+        except:
+            pass
+    # Auch prüfen ob "Schicht direkt besetzen" sichtbar ist
+    try:
+        titel = driver.find_elements(By.XPATH,
+            "//*[contains(text(),'Schicht direkt besetzen') or contains(text(),'Assign shift') or contains(text(),'SCHLIESSEN') or contains(text(),'CLOSE')]"
+        )
+        for t in titel:
+            if t.is_displayed():
+                return True
+    except:
+        pass
+    return False
+
+
+def popup_warten(driver, sekunden=10):
+    ende = time.time() + sekunden
+    while time.time() < ende:
+        if popup_ist_offen(driver):
+            time.sleep(0.5)
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def popup_text_holen(driver):
+    """Holt den Text aus dem offenen Popup – probiert alle moeglichen Container."""
+    for sel in [
+        "mat-dialog-container",
+        "[role='dialog']",
+        ".cdk-overlay-pane",
+        "ngb-modal-window",
+        ".modal-content",
+        "kendo-dialog",
+    ]:
+        try:
+            elems = driver.find_elements(By.CSS_SELECTOR, sel)
+            for e in elems:
+                if e.is_displayed() and e.text.strip():
+                    return e.text
+        except:
+            pass
+    # Fallback: body text wenn alles andere scheitert
+    return ""
+
+
+def popup_schliessen(driver):
+    for sel in ["button.outlined-button", "button[class*='outlined-button']"]:
+        btns = driver.find_elements(By.CSS_SELECTOR, sel)
+        for btn in btns:
+            try:
+                if btn.is_displayed():
+                    driver.execute_script("arguments[0].click();", btn)
+                    time.sleep(2)
+                    if not popup_ist_offen(driver):
+                        return
+            except:
+                pass
+
+    for text in ["SCHLIESSEN", "CLOSE", "Schließen", "Close"]:
+        btns = driver.find_elements(By.XPATH, f"//button[contains(.,'{text}')]")
+        for btn in btns:
+            try:
+                if btn.is_displayed():
+                    driver.execute_script("arguments[0].click();", btn)
+                    time.sleep(2)
+                    if not popup_ist_offen(driver):
+                        return
+            except:
+                pass
+
+    try:
+        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+    except:
+        pass
+    time.sleep(2)
+
+
+def angular_klick(driver, element):
+    """Echter Angular-kompatibler Klick mit bubbling MouseEvents."""
+    driver.execute_script("""
+        var el = arguments[0];
+        el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));
+        el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true}));
+        el.dispatchEvent(new MouseEvent('mouseup',   {bubbles: true, cancelable: true}));
+        el.dispatchEvent(new MouseEvent('click',     {bubbles: true, cancelable: true}));
+    """, element)
+
+
+def klicke_element(driver, element):
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+    time.sleep(1)
+
+    # Methode 1: Angular MouseEvent (hat funktioniert laut Log!)
+    try:
+        angular_klick(driver, element)
+        time.sleep(3)
+        if popup_ist_offen(driver):
+            print("    -> Klick via Angular MouseEvent")
+            return True
+    except Exception as e:
+        print(f"    Angular-Klick Fehler: {e}")
+
+    # Methode 2: ActionChains
+    try:
+        ActionChains(driver).move_to_element(element).pause(0.3).click().perform()
+        time.sleep(3)
+        if popup_ist_offen(driver):
+            print("    -> Klick via ActionChains")
+            return True
+    except:
+        pass
+
+    # Methode 3: Angular-Klick auf inneres div
+    try:
+        inner = element.find_element(By.CSS_SELECTOR, "div.col.text-center")
+        angular_klick(driver, inner)
+        time.sleep(3)
+        if popup_ist_offen(driver):
+            print("    -> Klick via inner div")
+            return True
+    except:
+        pass
+
+    return False
 
 
 def monatsnamen_lesen(driver):
@@ -63,39 +220,34 @@ def naechsten_monat_klicken(driver, monat_vorher):
             time.sleep(3)
             if monatsnamen_lesen(driver) != monat_vorher:
                 return True
+    print("  Kein Weiter-Button gefunden!")
     return False
 
 
-def monat_scannen(driver, monat_name):
-    """
-    Liest fuer jeden Tag die Anzahl freier Schichten aus.
-    Gibt ein Dict zurueck: { "30. April 2026": 5, ... }
-    Kein Popup, kein Klick – nur lesen.
-    """
-    time.sleep(3)
-    ergebnis = {}
-
+def freie_tage_finden(driver):
     tage = driver.find_elements(By.CSS_SELECTOR, "div.cursor-pointer.fw-bold")
     tage = [t for t in tage if "freie Schicht" in t.text or "free shift" in t.text.lower()]
+    if tage:
+        return tage
+    tage = driver.find_elements(By.CSS_SELECTOR, "div.col.text-center")
+    return [t for t in tage if "freie Schicht" in t.text or "free shift" in t.text.lower()]
 
-    if not tage:
-        tage = driver.find_elements(By.CSS_SELECTOR, "div.col.text-center")
-        tage = [t for t in tage if "freie Schicht" in t.text or "free shift" in t.text.lower()]
 
-    print(f"{monat_name}: {len(tage)} Tage mit freien Schichten")
+def monat_scannen(driver, frueh_schichten, monat_name):
+    time.sleep(3)
+    banner_schliessen(driver)
+    time.sleep(1)
 
-    for tag in tage:
-        # Zahl aus Text extrahieren z.B. "08 freie Schichten" -> 8
-        anzahl = 0
-        try:
-            text = tag.text.strip()
-            zahl = ''.join(filter(str.isdigit, text.split("\n")[0]))
-            if zahl:
-                anzahl = int(zahl)
-        except:
-            pass
+    tage = freie_tage_finden(driver)
+    print(f"\n{monat_name}: {len(tage)} Tage mit freien Schichten")
 
-        # Datum aus uebergeordneter Zelle
+    for i in range(len(tage)):
+        tage = freie_tage_finden(driver)
+        if i >= len(tage):
+            break
+
+        tag = tage[i]
+
         datum = monat_name
         try:
             zelle = tag.find_element(By.XPATH, "./ancestor::td")
@@ -106,10 +258,50 @@ def monat_scannen(driver, monat_name):
         except:
             pass
 
-        ergebnis[datum] = anzahl
-        print(f"  {datum}: {anzahl} freie Schichten")
+        print(f"  {datum} ({tag.text.strip()[:30]}) ...")
 
-    return ergebnis
+        try:
+            geoeffnet = klicke_element(driver, tag)
+            if not geoeffnet:
+                geoeffnet = popup_warten(driver, sekunden=5)
+            if not geoeffnet:
+                print(f"    -> Kein Popup")
+                continue
+
+            dialog_text = popup_text_holen(driver)
+            if not dialog_text:
+                print(f"    -> Dialog leer")
+                popup_schliessen(driver)
+                continue
+
+            alle_zeilen = dialog_text.split("\n")
+            frueh_gefunden = False
+
+            for idx, zeile in enumerate(alle_zeilen):
+                zeile = zeile.strip()
+                if not zeile or "FRÜH" not in zeile.upper():
+                    continue
+                kontext = " ".join(alle_zeilen[max(0, idx - 2):idx + 3])
+                if "Vorläufige" in kontext or "Preliminary" in kontext:
+                    continue
+                eintrag = f"{datum} – {zeile}"
+                if eintrag not in frueh_schichten:
+                    frueh_schichten.add(eintrag)
+                    frueh_gefunden = True
+                    print(f"    FRUEH: {eintrag}")
+
+            if not frueh_gefunden:
+                print(f"    -> Keine FRUEH-Schicht")
+
+            popup_schliessen(driver)
+
+        except Exception as e:
+            print(f"    Fehler: {e}")
+            try:
+                popup_schliessen(driver)
+            except:
+                pass
+            continue
 
 
 def schichten_abrufen():
@@ -122,10 +314,9 @@ def schichten_abrufen():
     options.add_experimental_option("prefs", {"intl.accept_languages": "de,de-DE"})
 
     driver = webdriver.Chrome(options=options)
-    aktuell = {}
+    frueh_schichten = set()
 
     try:
-        # Login
         driver.get("https://pep.karls.de/login")
         time.sleep(5)
 
@@ -149,22 +340,20 @@ def schichten_abrufen():
             driver.execute_script("arguments[0].click();", submit[0])
         time.sleep(5)
 
-        # Kalender
         driver.get("https://pep.karls.de/profile/116359/kalender")
         time.sleep(5)
 
-        # Monat 1
         monat_1 = monatsnamen_lesen(driver)
         print(f"\n=== MONAT 1: {monat_1} ===")
-        aktuell.update(monat_scannen(driver, monat_1))
+        monat_scannen(driver, frueh_schichten, monat_1)
 
-        # Monat 2
+        print(f"\n-> Naechster Monat...")
         if naechsten_monat_klicken(driver, monat_1):
             monat_2 = monatsnamen_lesen(driver)
             print(f"\n=== MONAT 2: {monat_2} ===")
-            aktuell.update(monat_scannen(driver, monat_2))
+            monat_scannen(driver, frueh_schichten, monat_2)
         else:
-            print("Weiter-Button nicht gefunden.")
+            telegram_senden("Weiter-Button nicht gefunden.")
 
     except Exception as e:
         print(f"Hauptfehler: {e}")
@@ -172,26 +361,21 @@ def schichten_abrufen():
     finally:
         driver.quit()
 
-    return aktuell
+    return frueh_schichten
 
 
-# Start
-print("Pruefe auf Aenderungen bei freien Schichten...")
+print("Pruefe auf neue Fruehschichten...")
 aktuell = schichten_abrufen()
 bekannt = laden()
+neu = aktuell - bekannt
 
-nachrichten = []
-for datum, anzahl in aktuell.items():
-    alte_anzahl = bekannt.get(datum, 0)
-    if anzahl > alte_anzahl:
-        nachrichten.append(f"📅 {datum}: {alte_anzahl} → {anzahl} freie Schichten")
-        print(f"NEU: {datum}: {alte_anzahl} -> {anzahl}")
-
-if nachrichten:
-    text = "🍓 Mehr freie Schichten bei Karls!\n\n" + "\n".join(nachrichten)
-    telegram_senden(text)
-    print(f"{len(nachrichten)} Aenderung(en) – Telegram gesendet!")
+if neu:
+    nachricht = "NEUE FRUEHSCHICHT bei Karls!\n\n"
+    for s in sorted(neu):
+        nachricht += f"- {s}\n"
+    telegram_senden(nachricht)
+    print(f"{len(neu)} neue Schicht(en) - Telegram gesendet!")
 else:
-    print("Keine Aenderungen.")
+    print("Keine neuen Fruehschichten.")
 
 speichern(aktuell)
