@@ -7,6 +7,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
 
 USERNAME = os.environ["KARLS_USERNAME"]
 PASSWORD = os.environ["KARLS_PASSWORD"]
@@ -24,15 +25,14 @@ def laden():
         with open(BEKANNTE_FILE) as f:
             return json.load(f)
     except:
-        return {}
+        return []
 
 def speichern(daten):
     with open(BEKANNTE_FILE, "w") as f:
-        json.dump(daten, f)
+        json.dump(list(daten), f)
 
 def monat_lesen(driver):
     try:
-        # Kendo DatePicker - Wert aus Input holen
         feld = driver.find_element(By.CSS_SELECTOR, "input.k-input-inner")
         wert = feld.get_attribute("value") or feld.get_attribute("title")
         if wert and len(wert) > 2:
@@ -40,49 +40,81 @@ def monat_lesen(driver):
     except:
         pass
     try:
-        # Fallback: title-Attribut
         feld = driver.find_element(By.CSS_SELECTOR, "kendo-datepicker input")
         wert = feld.get_attribute("title")
         if wert and len(wert) > 2:
             return wert.strip()
     except:
         pass
-    try:
-        # Fallback: sichtbarer Text im DatePicker
-        picker = driver.find_element(By.CSS_SELECTOR, "kendo-datepicker")
-        wert = picker.text.strip()
-        if wert:
-            return wert
-    except:
-        pass
     return "Unbekannt"
 
-def freie_schichten_lesen(driver):
-    ergebnis = {}
-    
-    tage = driver.find_elements(By.CSS_SELECTOR, "div.col.text-center")
-    for tag in tage:
-        text = tag.text.strip()
-        if "freie Schicht" in text or "free shift" in text.lower():
-            try:
-                zahl = int(text.split()[0])
-                datum = "?"
-                try:
-                    # day-content -> parent -> vorheriges Geschwister (day-headline) -> Datum-div
-                    day_content = tag.find_element(By.XPATH, "./ancestor::div[contains(@class,'day-content')]")
-                    parent = day_content.find_element(By.XPATH, "..")
-                    day_headline = parent.find_element(By.CSS_SELECTOR, "div.day-headline")
-                    datum_div = day_headline.find_element(By.CSS_SELECTOR, "div.col-4.fw-bold")
-                    datum = datum_div.text.strip().replace(".", "").strip()
-                except:
-                    pass
-                
-                ergebnis[datum] = zahl
-            except:
-                continue
-    
-    return ergebnis
-    
+def tag_anklicken_und_pruefen(driver, tag_element):
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", tag_element)
+        time.sleep(0.5)
+        driver.execute_script("arguments[0].click();", tag_element)
+        time.sleep(2)
+
+        wait = WebDriverWait(driver, 5)
+        popup = wait.until(EC.presence_of_element_located((
+            By.CSS_SELECTOR, ".modal-content, mat-dialog-container, [role='dialog'], .k-dialog"
+        )))
+
+        popup_text = popup.text.upper()
+        hat_frueh = "FRÜH" in popup_text or "FRUH" in popup_text
+
+        try:
+            schliessen = driver.find_element(By.XPATH,
+                "//button[contains(text(),'SCHLIESSEN') or contains(text(),'CLOSE')]")
+            driver.execute_script("arguments[0].click();", schliessen)
+        except:
+            driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+        time.sleep(1)
+
+        return hat_frueh
+
+    except Exception as e:
+        print(f"    Klick-Fehler: {e}")
+        return False
+
+def freie_schichten_lesen(driver, monat_name):
+    frueh_tage = []
+
+    tage = driver.find_elements(By.CSS_SELECTOR, "div.row.cursor-pointer.fw-bold")
+    print(f"Gefundene Tage: {len(tage)}")
+
+    for i in range(len(tage)):
+        tage = driver.find_elements(By.CSS_SELECTOR, "div.row.cursor-pointer.fw-bold")
+        if i >= len(tage):
+            break
+
+        tag = tage[i]
+
+        datum = "?"
+        try:
+            container = tag.find_element(By.XPATH,
+                "./ancestor::div[contains(@class,'day-content')]/..")
+            headline = container.find_element(By.CSS_SELECTOR, "div.day-headline")
+            alle_divs = headline.find_elements(By.XPATH, "./div")
+            for div in alle_divs:
+                t = div.text.strip()
+                if t and t.replace(".", "").isdigit():
+                    datum = f"{t.replace('.','').strip()}. {monat_name}"
+                    break
+        except:
+            pass
+
+        print(f"  Prüfe {datum}: {tag.text.strip()}")
+
+        hat_frueh = tag_anklicken_und_pruefen(driver, tag)
+        if hat_frueh:
+            frueh_tage.append(datum)
+            print(f"    -> FRÜH gefunden!")
+        else:
+            print(f"    -> Keine FRÜH-Schicht")
+
+    return frueh_tage
+
 def kalender_abrufen():
     options = Options()
     options.add_argument("--headless")
@@ -92,53 +124,41 @@ def kalender_abrufen():
     options.add_argument("--lang=de-DE")
 
     driver = webdriver.Chrome(options=options)
-    alle_schichten = {}
+    alle_frueh_tage = set()
 
     try:
-        # Login
         driver.get("https://pep.karls.de/login")
         time.sleep(5)
-
         wait = WebDriverWait(driver, 20)
         id_feld = wait.until(EC.presence_of_element_located((
-            By.CSS_SELECTOR,
-            "[formcontrolname='employeeId'] input, input[formcontrolname='employeeId']"
+            By.CSS_SELECTOR, "[formcontrolname='employeeId'] input"
         )))
         id_feld.send_keys(USERNAME)
-
-        pw_feld = driver.find_element(
-            By.CSS_SELECTOR,
-            "[formcontrolname='password'] input, input[formcontrolname='password']"
-        )
+        pw_feld = driver.find_element(By.CSS_SELECTOR, "[formcontrolname='password'] input")
         pw_feld.send_keys(PASSWORD)
         time.sleep(1)
-
         submit = driver.find_elements(By.XPATH, "//button[@type='submit']")
         if submit:
             driver.execute_script("arguments[0].click();", submit[0])
         time.sleep(5)
 
-        # Kalender laden
         driver.get("https://pep.karls.de/profile/116359/kalender")
         time.sleep(5)
 
-        # Monat 1
         monat_1 = monat_lesen(driver)
-        daten_1 = freie_schichten_lesen(driver)
-        print(f"{monat_1}: {daten_1}")
-        for tag, anzahl in daten_1.items():
-            alle_schichten[f"{tag}. {monat_1}"] = anzahl
+        print(f"\n=== {monat_1} ===")
+        frueh_1 = freie_schichten_lesen(driver, monat_1)
+        alle_frueh_tage.update(frueh_1)
 
-        # Nächsten Monat
-        next_btn = driver.find_elements(By.CSS_SELECTOR, "div[title='Nächster Monat'], div[title='Next month'], div.button-orange-gradient")
+        next_btn = driver.find_elements(By.CSS_SELECTOR,
+            "div[title='Nächster Monat'], div[title='Next month']")
         if next_btn:
             driver.execute_script("arguments[0].click();", next_btn[-1])
             time.sleep(3)
             monat_2 = monat_lesen(driver)
-            daten_2 = freie_schichten_lesen(driver)
-            print(f"{monat_2}: {daten_2}")
-            for tag, anzahl in daten_2.items():
-                alle_schichten[f"{tag}. {monat_2}"] = anzahl
+            print(f"\n=== {monat_2} ===")
+            frueh_2 = freie_schichten_lesen(driver, monat_2)
+            alle_frueh_tage.update(frueh_2)
 
     except Exception as e:
         print(f"Fehler: {e}")
@@ -146,31 +166,22 @@ def kalender_abrufen():
     finally:
         driver.quit()
 
-    return alle_schichten
+    return alle_frueh_tage
 
 # Start
-print("Prüfe freie Schichten...")
-aktuell = kalender_abrufen()
-bekannt = laden()
+print("Prüfe auf FRÜH-Schichten...")
+aktuell = set(kalender_abrufen())
+bekannt = set(laden())
 
-nachricht = ""
-for datum, anzahl in aktuell.items():
-    alte_anzahl = bekannt.get(datum, 0)
-    
-    if datum not in bekannt:
-        # Komplett neuer Tag
-        nachricht += f"🆕 {datum}: {anzahl} freie Schichten (neu!)\n"
-        print(f"NEU TAG: {datum} mit {anzahl} Schichten")
-    elif anzahl > alte_anzahl:
-        # Mehr Schichten als vorher
-        mehr = anzahl - alte_anzahl
-        nachricht += f"📈 {datum}: +{mehr} Schichten ({alte_anzahl} → {anzahl})\n"
-        print(f"MEHR: {datum}: {alte_anzahl} -> {anzahl}")
+neu = aktuell - bekannt
 
-if nachricht:
-    telegram_senden(f"🍓 Neue freie Schichten bei Karls!\n\n{nachricht}")
-    print("Telegram gesendet!")
+if neu:
+    nachricht = "🍓 Neue FRÜH-Schichten bei Karls!\n\n"
+    for tag in sorted(neu):
+        nachricht += f"• {tag}\n"
+    telegram_senden(nachricht)
+    print(f"Telegram gesendet: {neu}")
 else:
-    print("Keine Änderungen.")
+    print("Keine neuen FRÜH-Schichten.")
 
 speichern(aktuell)
