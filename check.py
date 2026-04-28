@@ -49,21 +49,16 @@ def freie_schichten_lesen(driver):
         if "freie Schicht" in text or "free shift" in text.lower():
             try:
                 zahl = int(text.split()[0])
-                
                 datum = "?"
                 try:
-                    # Geh zum übergeordneten Container, dann such das Datum-div
-                    container = tag.find_element(By.XPATH, "./ancestor::div[contains(@class,'day-headline')]/..")
-                    datum_div = container.find_element(By.CSS_SELECTOR, "div.col-4.fw-bold")
+                    # day-content -> parent -> vorheriges Geschwister (day-headline) -> Datum-div
+                    day_content = tag.find_element(By.XPATH, "./ancestor::div[contains(@class,'day-content')]")
+                    parent = day_content.find_element(By.XPATH, "..")
+                    day_headline = parent.find_element(By.CSS_SELECTOR, "div.day-headline")
+                    datum_div = day_headline.find_element(By.CSS_SELECTOR, "div.col-4.fw-bold")
                     datum = datum_div.text.strip().replace(".", "").strip()
                 except:
-                    try:
-                        # Fallback: direkt den Geschwister-div mit der Tageszahl suchen
-                        container = tag.find_element(By.XPATH, "./ancestor::div[2]")
-                        datum_div = container.find_element(By.CSS_SELECTOR, "div.fw-bold")
-                        datum = datum_div.text.strip().replace(".", "").strip()
-                    except:
-                        pass
+                    pass
                 
                 ergebnis[datum] = zahl
             except:
@@ -71,8 +66,6 @@ def freie_schichten_lesen(driver):
     
     return ergebnis
     
-    return ergebnis
-
 def kalender_abrufen():
     options = Options()
     options.add_argument("--headless")
@@ -146,10 +139,16 @@ bekannt = laden()
 nachricht = ""
 for datum, anzahl in aktuell.items():
     alte_anzahl = bekannt.get(datum, 0)
-    if anzahl > alte_anzahl:
+    
+    if datum not in bekannt:
+        # Komplett neuer Tag
+        nachricht += f"🆕 {datum}: {anzahl} freie Schichten (neu!)\n"
+        print(f"NEU TAG: {datum} mit {anzahl} Schichten")
+    elif anzahl > alte_anzahl:
+        # Mehr Schichten als vorher
         mehr = anzahl - alte_anzahl
-        nachricht += f"• {datum}: +{mehr} freie Schichten ({anzahl} gesamt)\n"
-        print(f"NEU: {datum}: {alte_anzahl} -> {anzahl}")
+        nachricht += f"📈 {datum}: +{mehr} Schichten ({alte_anzahl} → {anzahl})\n"
+        print(f"MEHR: {datum}: {alte_anzahl} -> {anzahl}")
 
 if nachricht:
     telegram_senden(f"🍓 Neue freie Schichten bei Karls!\n\n{nachricht}")
