@@ -49,34 +49,33 @@ def banner_schliessen(driver):
         pass
 
 
-def popup_ist_offen(driver):
-    """Prueft ob irgendein Dialog/Popup sichtbar ist."""
-    for sel in [
+def get_dialog(driver):
+    """
+    Gibt den Dialog-Container zurueck – probiert mehrere Selektoren.
+    """
+    selektoren = [
         "mat-dialog-container",
-        "[role='dialog']",
-        ".cdk-overlay-pane",
         "ngb-modal-window",
+        ".modal-dialog",
         ".modal-content",
+        "[role='dialog']",
         "kendo-dialog",
-    ]:
-        try:
-            elems = driver.find_elements(By.CSS_SELECTOR, sel)
-            for e in elems:
+        ".k-dialog",
+        ".cdk-overlay-pane",
+    ]
+    for sel in selektoren:
+        elems = driver.find_elements(By.CSS_SELECTOR, sel)
+        for e in elems:
+            try:
                 if e.is_displayed() and e.text.strip():
-                    return True
-        except:
-            pass
-    # Auch prüfen ob "Schicht direkt besetzen" sichtbar ist
-    try:
-        titel = driver.find_elements(By.XPATH,
-            "//*[contains(text(),'Schicht direkt besetzen') or contains(text(),'Assign shift') or contains(text(),'SCHLIESSEN') or contains(text(),'CLOSE')]"
-        )
-        for t in titel:
-            if t.is_displayed():
-                return True
-    except:
-        pass
-    return False
+                    return e
+            except:
+                pass
+    return None
+
+
+def popup_ist_offen(driver):
+    return get_dialog(driver) is not None
 
 
 def popup_warten(driver, sekunden=10):
@@ -87,27 +86,6 @@ def popup_warten(driver, sekunden=10):
             return True
         time.sleep(0.5)
     return False
-
-
-def popup_text_holen(driver):
-    """Holt den Text aus dem offenen Popup – probiert alle moeglichen Container."""
-    for sel in [
-        "mat-dialog-container",
-        "[role='dialog']",
-        ".cdk-overlay-pane",
-        "ngb-modal-window",
-        ".modal-content",
-        "kendo-dialog",
-    ]:
-        try:
-            elems = driver.find_elements(By.CSS_SELECTOR, sel)
-            for e in elems:
-                if e.is_displayed() and e.text.strip():
-                    return e.text
-        except:
-            pass
-    # Fallback: body text wenn alles andere scheitert
-    return ""
 
 
 def popup_schliessen(driver):
@@ -143,7 +121,6 @@ def popup_schliessen(driver):
 
 
 def angular_klick(driver, element):
-    """Echter Angular-kompatibler Klick mit bubbling MouseEvents."""
     driver.execute_script("""
         var el = arguments[0];
         el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));
@@ -157,33 +134,28 @@ def klicke_element(driver, element):
     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
     time.sleep(1)
 
-    # Methode 1: Angular MouseEvent (hat funktioniert laut Log!)
     try:
         angular_klick(driver, element)
         time.sleep(3)
         if popup_ist_offen(driver):
-            print("    -> Klick via Angular MouseEvent")
             return True
     except Exception as e:
         print(f"    Angular-Klick Fehler: {e}")
 
-    # Methode 2: ActionChains
     try:
-        ActionChains(driver).move_to_element(element).pause(0.3).click().perform()
+        actions = ActionChains(driver)
+        actions.move_to_element(element).pause(0.3).click().perform()
         time.sleep(3)
         if popup_ist_offen(driver):
-            print("    -> Klick via ActionChains")
             return True
     except:
         pass
 
-    # Methode 3: Angular-Klick auf inneres div
     try:
         inner = element.find_element(By.CSS_SELECTOR, "div.col.text-center")
         angular_klick(driver, inner)
         time.sleep(3)
         if popup_ist_offen(driver):
-            print("    -> Klick via inner div")
             return True
     except:
         pass
@@ -216,7 +188,9 @@ def naechsten_monat_klicken(driver, monat_vorher):
     for sel in ["div[title='Nächster Monat']", "div[title='Next month']", "div.button-orange-gradient"]:
         elems = driver.find_elements(By.CSS_SELECTOR, sel)
         if elems:
-            driver.execute_script("arguments[0].click();", elems[-1])
+            ziel = elems[-1]
+            print(f"  Weiter-Button: {sel}")
+            driver.execute_script("arguments[0].click();", ziel)
             time.sleep(3)
             if monatsnamen_lesen(driver) != monat_vorher:
                 return True
@@ -262,17 +236,26 @@ def monat_scannen(driver, frueh_schichten, monat_name):
 
         try:
             geoeffnet = klicke_element(driver, tag)
+
             if not geoeffnet:
                 geoeffnet = popup_warten(driver, sekunden=5)
+
             if not geoeffnet:
-                print(f"    -> Kein Popup")
+                # Screenshot fuer Debugging
+                driver.save_screenshot(f"debug_kein_popup_{i}.png")
+                print(f"    -> Kein Popup – Screenshot gespeichert")
                 continue
 
-            dialog_text = popup_text_holen(driver)
-            if not dialog_text:
-                print(f"    -> Dialog leer")
+            # Dialog finden
+            dialog = get_dialog(driver)
+            if not dialog:
+                print(f"    -> Dialog nicht gefunden")
                 popup_schliessen(driver)
                 continue
+
+            # DEBUG: zeige was im Dialog steht
+            dialog_text = dialog.text
+            print(f"    Dialog-Text (erste 200 Zeichen): {dialog_text[:200]}")
 
             alle_zeilen = dialog_text.split("\n")
             frueh_gefunden = False
