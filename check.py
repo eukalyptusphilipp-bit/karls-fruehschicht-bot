@@ -53,15 +53,28 @@ def tag_anklicken_und_pruefen(driver, tag_element):
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", tag_element)
         time.sleep(0.5)
         driver.execute_script("arguments[0].click();", tag_element)
-        time.sleep(2)
+    time.sleep(2)
 
-        wait = WebDriverWait(driver, 5)
-        popup = wait.until(EC.presence_of_element_located((
-            By.CSS_SELECTOR, ".modal-content, mat-dialog-container, [role='dialog'], .k-dialog"
-        )))
+# Versuche verschiedene Dialog-Selektoren
+popup_text = ""
+for sel in [".modal-content", "mat-dialog-container", "[role='dialog']", ".k-dialog", ".cdk-overlay-pane"]:
+    elems = driver.find_elements(By.CSS_SELECTOR, sel)
+    for e in elems:
+        try:
+            if e.is_displayed() and e.text.strip():
+                popup_text = e.text.upper()
+                break
+        except:
+            pass
+    if popup_text:
+        break
 
-        popup_text = popup.text.upper()
-        hat_frueh = "FRÜH" in popup_text or "FRUH" in popup_text
+# Fallback: ganzen Body-Text nehmen wenn Popup nicht gefunden
+if not popup_text:
+    popup_text = driver.find_element(By.TAG_NAME, "body").text.upper()
+
+print(f"    POPUP TEXT: {popup_text[:300]}")
+hat_frueh = "FRÜH" in popup_text or "FRUH" in popup_text
 
         try:
             schliessen = driver.find_element(By.XPATH,
