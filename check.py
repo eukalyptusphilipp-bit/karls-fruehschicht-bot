@@ -35,36 +35,68 @@ def speichern(schichten):
         json.dump(list(schichten), f)
 
 
+def popup_ist_offen(driver):
+    """Prueft ob mat-dialog-container sichtbar ist."""
+    try:
+        dialoge = driver.find_elements(By.CSS_SELECTOR, "mat-dialog-container")
+        return any(d.is_displayed() for d in dialoge)
+    except:
+        return False
+
+
+def popup_warten(driver, sekunden=8):
+    """Wartet bis mat-dialog-container erscheint."""
+    try:
+        WebDriverWait(driver, sekunden).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "mat-dialog-container"))
+        )
+        time.sleep(1)  # kurz warten bis Inhalt geladen
+        return popup_ist_offen(driver)
+    except:
+        return False
+
+
 def popup_schliessen(driver):
     """
-    Schliesst Popup – akzeptiert SCHLIESSEN (DE) und CLOSE (EN).
-    Danach sicherstellen dass kein Dialog mehr offen ist.
+    Schliesst Popup.
+    Der Button hat CSS-Klasse 'outlined-button' und text-uppercase.
+    Aktuelle DOM-Texte koennen sein: Schließen, Close, SCHLIESSEN, CLOSE.
     """
     geschlossen = False
 
-    # Versuche 1: SCHLIESSEN oder CLOSE Button
-    """Schliesst Popup – akzeptiert SCHLIESSEN (DE) und CLOSE (EN)."""
-    for text in ["SCHLIESSEN", "CLOSE"]:
-        try:
-            btn = WebDriverWait(driver, 4).until(
-                EC.element_to_be_clickable(
-                    (By.XPATH, f"//button[normalize-space(text())='{text}']")
-                )
-            )
-            driver.execute_script("arguments[0].click();", btn)
-            geschlossen = True
+    # Strategie 1: per Klasse (zuverlaessigste Methode)
+    for sel in ["button.outlined-button", "button[class*='outlined-button']"]:
+        btns = driver.find_elements(By.CSS_SELECTOR, sel)
+        for btn in btns:
+            try:
+                if btn.is_displayed():
+                    driver.execute_script("arguments[0].click();", btn)
+                    geschlossen = True
+                    break
+            except:
+                pass
+        if geschlossen:
             break
-        except:
-            pass
 
-    # Versuche 2: X-Button (aria-label Close)
+    # Strategie 2: per Text (alle Varianten)
     if not geschlossen:
-        for sel in [
-            "//button[@aria-label='Close']",
-            "//button[@title='Close']",
-            "//button[@aria-label='Schließen']",
-        ]:
-            btns = driver.find_elements(By.XPATH, sel)
+        for text in ["SCHLIESSEN", "CLOSE", "Schließen", "Close", "schließen", "close"]:
+            btns = driver.find_elements(By.XPATH, f"//button[contains(.,'{text}')]")
+            for btn in btns:
+                try:
+                    if btn.is_displayed():
+                        driver.execute_script("arguments[0].click();", btn)
+                        geschlossen = True
+                        break
+                except:
+                    pass
+            if geschlossen:
+                break
+
+    # Strategie 3: X-Button (aria-label)
+    if not geschlossen:
+        for sel in ["button[aria-label='Close']", "button[title='Close']", "button[aria-label='Schließen']"]:
+            btns = driver.find_elements(By.CSS_SELECTOR, sel)
             if btns:
                 try:
                     driver.execute_script("arguments[0].click();", btns[0])
@@ -73,28 +105,19 @@ def popup_schliessen(driver):
                 except:
                     pass
 
-    # Versuche 3: ESC
+    # Strategie 4: ESC
     if not geschlossen:
         try:
             driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
-            time.sleep(2)
-            return
         except:
             pass
 
-    # Fallback: ESC
-    try:
-        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
-    except:
-        pass
     time.sleep(2)
 
-    # Sicherstellen dass Dialog wirklich zu ist
+    # Sicherstellen dass Dialog zu ist
     for _ in range(3):
-        dialoge = driver.find_elements(By.CSS_SELECTOR, "mat-dialog-container")
-        if not dialoge or not any(d.is_displayed() for d in dialoge):
+        if not popup_ist_offen(driver):
             break
-        # Nochmal ESC versuchen
         try:
             driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
         except:
@@ -102,27 +125,7 @@ def popup_schliessen(driver):
         time.sleep(1)
 
 
-def popup_warten(driver):
-    """Wartet bis ein Popup offen ist – prüft auf SCHLIESSEN oder CLOSE."""
-    """Wartet bis Popup offen ist – erkennt SCHLIESSEN oder CLOSE."""
-    try:
-        WebDriverWait(driver, 6).until(
-            EC.presence_of_element_located((
-                By.XPATH,
-                "//button[normalize-space(text())='SCHLIESSEN' or normalize-space(text())='CLOSE']"
-            ))
-        )
-        return True
-    except:
-        return False
-
-
 def monatsnamen_lesen(driver):
-    """
-    Liest den Monatsnamen aus dem Kalender.
-    Versucht mehrere Selektoren.
-    """
-    """Liest den Monatsnamen – z.B. 'Mai 2026'."""
     # Versuch 1: input type=text
     try:
         feld = driver.find_element(By.XPATH, "//input[@type='text']")
@@ -132,13 +135,6 @@ def monatsnamen_lesen(driver):
     except:
         pass
 
-    # Versuch 2: Kendo DatePicker span
-    for sel in [
-        "kendo-datepicker span",
-        ".k-datepicker span",
-        "kendo-datepicker input",
-        ".k-datepicker input",
-    ]:
     # Versuch 2: Kendo DatePicker
     for sel in ["kendo-datepicker input", ".k-datepicker input"]:
         try:
@@ -149,17 +145,14 @@ def monatsnamen_lesen(driver):
         except:
             pass
 
-    # Versuch 3: Irgendein Element das "2025" oder "2026" enthält
     # Versuch 3: Text mit Jahreszahl
     try:
-        elems = driver.find_elements(By.XPATH, "//*[contains(text(),'2025') or contains(text(),'2026') or contains(text(),'2027')]")
         elems = driver.find_elements(
             By.XPATH,
             "//*[contains(text(),'2025') or contains(text(),'2026') or contains(text(),'2027')]"
         )
         for e in elems:
             t = e.text.strip()
-            # Typisches Format: "Mai 2026" oder "May 2026"
             if 4 <= len(t) <= 20 and any(str(y) in t for y in [2025, 2026, 2027]):
                 return t
     except:
@@ -170,125 +163,100 @@ def monatsnamen_lesen(driver):
 
 def naechsten_monat_klicken(driver, monat_vorher):
     """
-    Klickt den Weiter-Button. Aus dem Log wissen wir:
-    - btn-warning existiert NICHT
-    - btn-primary existiert (Button[0] und Button[4] mit text='OK')
-    - Der Weiter-Pfeil ist btn-primary ohne Text
-    Klickt den Weiter-Pfeil.
-    Aus dem HTML wissen wir: es ist ein <div> mit title="Nächster Monat"
-    und class="button-orange-gradient" – KEIN <button>!
+    Weiter-Button ist ein <div> mit title='Nächster Monat'
+    und class='button-orange-gradient'.
     """
-    # Strategie 1: btn-primary ohne Text (Pfeil-Button)
-    btns = driver.find_elements(By.CSS_SELECTOR, "button.btn-primary")
-    pfeile = [b for b in btns if not b.text.strip() or b.text.strip() in ["", "›", "»", "→"]]
-    print(f"  btn-primary ohne Text: {len(pfeile)}")
-
-    if len(pfeile) >= 2:
-        # Zweiter = Weiter (Vorwärts)
-        driver.execute_script("arguments[0].click();", pfeile[1])
-        time.sleep(3)
-        if monatsnamen_lesen(driver) != monat_vorher:
-            return True
-
-    if len(pfeile) == 1:
-        driver.execute_script("arguments[0].click();", pfeile[0])
-        time.sleep(3)
-        if monatsnamen_lesen(driver) != monat_vorher:
-            return True
-
-    # Strategie 2: Alle btn-primary, den letzten nehmen
-    btns = driver.find_elements(By.CSS_SELECTOR, "button.btn-primary")
-    print(f"  btn-primary gesamt: {len(btns)}")
-    # Der Weiter-Button kommt nach dem Monatsnamen-Input, also eher hinten
-    for b in reversed(btns):
-        try:
-            if b.text.strip() in ["OK", "ACTIONS", "BESTÄTIGEN", "CONFIRM"]:
-                continue
-            driver.execute_script("arguments[0].click();", b)
     selektoren = [
         "div[title='Nächster Monat']",
         "div[title='Next month']",
-        "div[title='Naechster Monat']",
         "div.button-orange-gradient",
     ]
 
     for sel in selektoren:
         elems = driver.find_elements(By.CSS_SELECTOR, sel)
-        # Es gibt zwei orange Pfeile (zurück + vor), nehme den letzten
         if elems:
-            ziel = elems[-1]
-            print(f"  Weiter-Button gefunden: {sel} (Index {len(elems)-1})")
+            ziel = elems[-1]  # letzter = Vorwärts-Pfeil
+            print(f"  Weiter-Button: {sel}")
             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", ziel)
             time.sleep(0.3)
             driver.execute_script("arguments[0].click();", ziel)
             time.sleep(3)
-            if monatsnamen_lesen(driver) != monat_vorher:
-                print(f"  Weiter via btn-primary (hinten) geklappt!")
             neuer_monat = monatsnamen_lesen(driver)
             if neuer_monat != monat_vorher:
-                print(f"  Monat gewechselt: {monat_vorher} -> {neuer_monat}")
+                print(f"  OK: {monat_vorher} -> {neuer_monat}")
                 return True
-        except:
-            pass
-            else:
-                print(f"  Klick hat Monat nicht gewechselt, versuche naechsten Selektor...")
 
-    # Strategie 3: Button[0] direkt (aus Log wissen wir Index 0 ist btn-primary ohne Text)
-    alle = driver.find_elements(By.TAG_NAME, "button")
-    print(f"  Versuche Button[0] direkt: {alle[0].get_attribute('class') if alle else 'keine'}")
-    if alle:
-        driver.execute_script("arguments[0].click();", alle[0])
-        time.sleep(3)
-        if monatsnamen_lesen(driver) != monat_vorher:
-            print(f"  Weiter via Button[0] geklappt!")
-            return True
-
-    print("  KEIN Weiter-Button hat funktioniert")
     print("  Kein Weiter-Button gefunden!")
     return False
 
 
-def monat_scannen(driver, frueh_schichten, monat_name):
+def tag_anklicken(driver, element):
     """
-    Findet alle Tage mit freien Schichten und klickt den klickbaren
-    Container (div.cursor-pointer.fw-bold) an – nicht den inneren Text-div.
+    Versucht ein Kalender-Tag-Element anzuklicken.
+    Probiert mehrere Methoden bis das Popup aufgeht.
     """
-    time.sleep(3)
+    # Methode 1: JS click auf Element selbst
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+    time.sleep(0.5)
+    driver.execute_script("arguments[0].click();", element)
+    time.sleep(2.5)
+    if popup_ist_offen(driver):
+        return True
 
+    # Methode 2: Normaler Selenium click
+    try:
+        element.click()
+        time.sleep(2.5)
+        if popup_ist_offen(driver):
+            return True
+    except:
+        pass
+
+    # Methode 3: Klick auf inneres div.col.text-center
+    try:
+        inner = element.find_element(By.CSS_SELECTOR, "div.col.text-center")
+        driver.execute_script("arguments[0].click();", inner)
+        time.sleep(2.5)
+        if popup_ist_offen(driver):
+            return True
+    except:
+        pass
+
+    # Methode 4: Klick auf uebergeordnetes td
+    try:
+        td = element.find_element(By.XPATH, "./ancestor::td")
+        driver.execute_script("arguments[0].click();", td)
+        time.sleep(2.5)
+        if popup_ist_offen(driver):
+            return True
+    except:
+        pass
+
+    return False
+
+
+def freie_tage_finden(driver):
+    """Gibt alle Elemente zurueck die freie Schichten anzeigen."""
+    # Primaer: klickbarer Container
+    tage = driver.find_elements(By.CSS_SELECTOR, "div.cursor-pointer.fw-bold")
+    tage = [t for t in tage if "freie Schicht" in t.text or "free shift" in t.text.lower()]
+    if tage:
+        return tage
+
+    # Fallback: innerer Text-div
     tage = driver.find_elements(By.CSS_SELECTOR, "div.col.text-center")
     tage = [t for t in tage if "freie Schicht" in t.text or "free shift" in t.text.lower()]
-    # Klickbarer Container der freien Schichten (aus HTML bekannt)
-    # Struktur: div.row.m-0.border.mt-2.rounded.cursor-pointer.fw-bold
-    #   └── div.col  └── div.col.text-center  "08 freie Schichten"
-    container_sel = "div.cursor-pointer.fw-bold"
-    alle_container = driver.find_elements(By.CSS_SELECTOR, container_sel)
-    # Nur die mit "freie Schicht" oder "free shift" im Text
-    tage = [
-        c for c in alle_container
-        if "freie Schicht" in c.text or "free shift" in c.text.lower()
-    ]
+    return tage
 
-    # Fallback: innerer div (alter Selektor)
-    if not tage:
-        tage = driver.find_elements(By.CSS_SELECTOR, "div.col.text-center")
-        tage = [t for t in tage if "freie Schicht" in t.text or "free shift" in t.text.lower()]
-        print(f"  Fallback-Selektor genutzt")
 
+def monat_scannen(driver, frueh_schichten, monat_name):
+    time.sleep(3)
+
+    tage = freie_tage_finden(driver)
     print(f"\n{monat_name}: {len(tage)} Tage mit freien Schichten")
 
     for i in range(len(tage)):
-        tage = driver.find_elements(By.CSS_SELECTOR, "div.col.text-center")
-        tage = [t for t in tage if "freie Schicht" in t.text or "free shift" in t.text.lower()]
-        # Nach jedem Klick neu laden
-        alle_container = driver.find_elements(By.CSS_SELECTOR, container_sel)
-        tage = [
-            c for c in alle_container
-            if "freie Schicht" in c.text or "free shift" in c.text.lower()
-        ]
-        if not tage:
-            tage = driver.find_elements(By.CSS_SELECTOR, "div.col.text-center")
-            tage = [t for t in tage if "freie Schicht" in t.text or "free shift" in t.text.lower()]
-
+        tage = freie_tage_finden(driver)
         if i >= len(tage):
             break
 
@@ -305,19 +273,17 @@ def monat_scannen(driver, frueh_schichten, monat_name):
         except:
             pass
 
-        print(f"  {datum} ({tag.text.strip()}) ...")
         print(f"  {datum} ({tag.text.strip()[:30]}) ...")
 
         try:
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", tag)
-            time.sleep(0.4)
-            time.sleep(0.5)
-            driver.execute_script("arguments[0].click();", tag)
-            time.sleep(3)
+            geoeffnet = tag_anklicken(driver, tag)
 
-            if not popup_warten(driver):
-                print(f"    -> Kein Popup (kein SCHLIESSEN/CLOSE Button gefunden)")
-                print(f"    -> Kein Popup gefunden")
+            if not geoeffnet:
+                # Letzter Versuch: nochmal warten
+                geoeffnet = popup_warten(driver, sekunden=5)
+
+            if not geoeffnet:
+                print(f"    -> Kein Popup trotz mehrerer Versuche")
                 continue
 
             # Dialog-Text auslesen
@@ -329,7 +295,6 @@ def monat_scannen(driver, frueh_schichten, monat_name):
                 zeile = zeile.strip()
                 if not zeile or "FRÜH" not in zeile.upper():
                     continue
-                # Kontext prüfen: Vorläufige Planung ignorieren
                 kontext = " ".join(alle_zeilen[max(0, idx - 2):idx + 3])
                 if "Vorläufige" in kontext or "Preliminary" in kontext:
                     continue
@@ -359,7 +324,6 @@ def schichten_abrufen():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
-    # Sprache auf Deutsch setzen
     options.add_argument("--lang=de-DE")
     options.add_experimental_option("prefs", {"intl.accept_languages": "de,de-DE"})
 
