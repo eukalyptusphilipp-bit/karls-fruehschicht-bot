@@ -1,1 +1,1 @@
-gh cache list --repo eukalyptusphilipp-bit/karls-fruehschicht-bot --limit 100 --json id --jq '.[].id' | xargs -I {} gh cache delete {} --repo eukalyptusphilipp-bit/karls-fruehschicht-bot
+
