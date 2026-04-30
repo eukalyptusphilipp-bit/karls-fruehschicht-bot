@@ -19,14 +19,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Cache laden
-        uses: actions/cache@v4
-        with:
-          path: bekannte_schichten.json
-          key: schichten-${{ github.run_id }}
-          restore-keys: |
-            schichten-
-
       - name: Chrome installieren
         uses: browser-actions/setup-chrome@v1
 
@@ -41,8 +33,10 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python check.py
 
-      - name: Cache speichern
-        uses: actions/cache/save@v4
-        with:
-          path: bekannte_schichten.json
-          key: schichten-${{ github.run_id }}
+      - name: JSON committen
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add bekannte_schichten.json
+          git diff --staged --quiet || git commit -m "Update bekannte_schichten"
+          git push
