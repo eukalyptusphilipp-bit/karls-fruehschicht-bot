@@ -18,7 +18,6 @@ BEKANNTE_FILE = "bekannte_schichten.json"
 IGNORIERTE_TAGE = [
     "18. Mai 2026",
     "19. Mai 2026",
-    "22. Mai 2026",
     "29. Mai 2026",
     "30. Mai 2026",
     "1. Juni 2026", "01 Jun.", "01 Jun",
